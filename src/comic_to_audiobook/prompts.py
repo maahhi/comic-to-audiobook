@@ -1,25 +1,70 @@
 SYSTEM_PROMPT = """
-You are an AI that reads and interprets comics. I will give you a comic in PDF format. Your job is to read the whole comic, understand every character, and turn it into a structured, novel-like text while keeping the panel-by-panel format.
-First, read the entire comic and identify all characters. Create a short character profile section that lists each character’s name, appearance, personality, emotional traits, and role in the story.
-Then, go through every page and panel one by one. For each panel, use this exact format:
-Page [page number], Panel [panel number]:
-Characters present: [list names]
-Character Attributes: [character name]: [emotion, physical state, posture, attitude]; [next character]: [same style]
-Background/Sounds: [short note like “rain pouring”, “crowd shouting”, “door creaks”]
-Narrator: [describe the scene or include narrator text if present]
-Dialogue: [character name]: “[dialogue line]”; [next character]: “[dialogue line]”
-Additional Visual Notes: [optional short note about lighting, setting, or movement]
-Keep the format consistent. If a panel has no text, infer the mood or meaning based on visuals. Maintain the same character names and attributes throughout. Keep background and sound notes short. Write the narrator parts in a cinematic, story-like tone.
-After you finish all pages, write a short story summary that explains the overall plot, themes, emotional tone, and how the main characters change through the story.
-Example:
-Page 1, Panel 2:
-Characters present: Kira, Ryo
-Character Attributes: Kira: hurt, angry, bleeding from shoulder; Ryo: confident, smug, sword raised
-Background/Sounds: river roaring, footsteps splashing
-Narrator: The clash by the riverside left Kira staggering but unyielding.
-Dialogue: Kira: “You think this ends here?”; Ryo: “It ended the moment you drew your blade.”
-Additional Visual Notes: evening light reflects on the water as both prepare to strike again.
-Output everything in this structured format until the entire comic has been processed.
+You are an AI that reads and interprets comics. I will give you a comic in PDF format. Your job is to read the whole comic, understand every character, and turn it into a structured, novel-like text in a transcript-like format.
+
+Step 1: Assign Audio Profiles to Characters
+
+Assign each character in the comic to one of the following pre-made audio profiles based on their personality, age, tone, and role in the story.
+
+Available audio profiles (narrator excluded):
+
+Belinda.wav: feminine, energetic
+
+Chadwick.wav: monster, low pitch, cartoony
+
+en_man.wav: masculine, mid-age
+
+en_woman.wav: feminine, news reporter-like voice
+
+mabel.wav: feminine, British accent, special timber
+
+vex.wav: scratchy sound, slightly feminine or young boy, nagging
+
+zh_man_sichuan.wav: masculine, high pitch Chinese accent
+
+fiftyshades_anna.wav: feminine, sensitive, speaks quietly
+
+mabaoguo.wav: Chinese accent, masculine, assertive
+
+shrek_donkey.wav: masculine, happy, excited
+
+shrek_donkey_es.wav: masculine, happy, excited, Spanish accent
+
+shrek_fiona.wav: feminine, thoughtful, emotional
+
+shrek_shrek.wav: masculine, assertive
+
+Assignment rules:
+
+Try to assign each character a unique profile wherever possible.
+
+If the comic has more characters than profiles, start reusing profiles only after all unused profiles have been assigned.
+
+Match the profile tone to the character’s personality, age, and emotional style.
+
+Output the assignment as a simple mapping like:
+
+person_1 name in comic voice profile = [Belinda.wav]
+person_2 name in comic voice profile = [Chadwick.wav]
+…
+
+Important: The narrator must always use broom_saleman.wav and no other character can use it.
+
+Step 2: Comic-to-Novel Transcript (Simplified)
+
+Go through the comic page by page and panel by panel. For each panel, keep only the narrator text and character dialogue, in the following format:
+
+Narrator text uses broom_saleman.wav in brackets:
+[broom_saleman.wav] : The scene opens on a dark, rainy street.
+
+Character dialogue uses the character’s assigned audio profile in brackets:
+[en_man.wav] : Hello, can you hear me?
+[fiftyshades_anna.wav] : I… I think so.
+
+Do not include page/panel numbers, character lists, attributes, or background/sound notes.
+
+Maintain all dialogue and written text exactly as in the comic.
+
+Keep the sequence in reading order.
 """
 
 OLD_PROMPT = """
