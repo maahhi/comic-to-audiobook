@@ -1,4 +1,6 @@
+import logging
 import queue
+import sys
 import threading
 import time
 from collections.abc import Generator
@@ -18,6 +20,9 @@ from comic_to_audiobook.comic_processor import (
     prepare_content,
 )
 
+logging.basicConfig(stream=sys.stdout, level=logging.INFO, force=True)
+logger: logging.Logger = logging.getLogger(name=__name__)
+
 MODEL_NAME = "gemini/gemini-2.5-pro"
 
 
@@ -36,7 +41,7 @@ def main(
     file_encoding: str = encode_pdf(pdf_path=Path(file_path))
     base64_url: str = f"data:application/pdf;base64,{file_encoding}"
     file_content_with_prompt: list[dict[str, Any]] = prepare_content(
-        prompt="Transcribe the input.", data_url=base64_url
+        prompt="Transcribe the input", data_url=base64_url
     )
 
     def vlm_producer() -> None:
@@ -53,37 +58,39 @@ def main(
             if text_out.empty():  # only push to the output text box after all existing text has been consumed
                 text_out.put(item=transcript)
 
-        sentence_buffer += text_chunk
+            sentence_buffer += text_chunk
 
-        while True:
-            match = SENTENCE_BOUNDARY.search(string=sentence_buffer)
-            should_flush_long_text: bool = len(sentence_buffer) >= MAX_LATENCY_CHARS and not match
+            while True:
+                match = SENTENCE_BOUNDARY.search(string=sentence_buffer)
+                should_flush_long_text: bool = len(sentence_buffer) >= MAX_LATENCY_CHARS and not match
 
-            if not match and not should_flush_long_text:
-                break
+                if not match and not should_flush_long_text:
+                    break
 
-            if match:
-                # Found complete sentence
-                cut: int = match.end()
+                if match:
+                    # Found complete sentence
+                    cut: int = match.end()
 
-                # Cut out complete sentence
-                sentence = sentence_buffer[:cut].strip()
+                    # Cut out complete sentence
+                    sentence = sentence_buffer[:cut].strip()
 
-                # Keep the remaining in the buffer
-                sentence_buffer = sentence_buffer[cut:]
-            else:
-                # Flush sentence longer than MAX_LATENCY_CHAR
-                sentence = sentence_buffer.strip()
+                    # Keep the remaining in the buffer
+                    sentence_buffer = sentence_buffer[cut:]
+                else:
+                    # Flush sentence longer than MAX_LATENCY_CHAR
+                    sentence = sentence_buffer.strip()
 
-                # Clear buffer
-                sentence_buffer = ""
+                    # Clear buffer
+                    sentence_buffer = ""
 
-            if sentence:  # add to the TTS streaming queue
-                tts_in.put(item=sentence)
+                if sentence:  # add to the TTS streaming queue
+                    logger.info(msg=sentence)
+                    tts_in.put(item=sentence)
 
-        # Flush any trailing text
-        if sentence_buffer.strip():
-            tts_in.put(item=sentence_buffer.strip())
+            # Flush any trailing text
+            if sentence_buffer.strip():
+                logger.info(msg=sentence_buffer)
+                tts_in.put(item=sentence_buffer.strip())
 
         tts_in.put(item=SENTINEL)
         text_out.put(item=transcript)
@@ -96,6 +103,7 @@ def main(
             if item is SENTINEL:
                 break
 
+            logger.info("TTS item: %s", item)
             for pcm_chunk in tts_stream_pcm(text=item):
                 audio_out.put(item=pcm_chunk)
 
@@ -148,11 +156,11 @@ def main(
 
 
 output_text: gr.Textbox = gr.Textbox(
-    label="Comic narration",
+    label="Transcript",
     lines=17,  # initial visible rows
     show_copy_button=True,
 )
-output_audio: gr.Audio = gr.Audio(label="Voice", streaming=True, autoplay=True)
+output_audio: gr.Audio = gr.Audio(label="Comic Narration", streaming=True, autoplay=True)
 
 demo: gr.Interface = gr.Interface(
     fn=main, inputs=gr.File(file_types=[".pdf"]), outputs=[output_audio, output_text], title="Comic Narrator"
