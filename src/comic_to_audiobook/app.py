@@ -87,10 +87,10 @@ def main(
                     logger.info(msg=sentence)
                     tts_in.put(item=sentence)
 
-            # Flush any trailing text
-            if sentence_buffer.strip():
-                logger.info(msg=sentence_buffer)
-                tts_in.put(item=sentence_buffer.strip())
+        # Flush any trailing text
+        if sentence_buffer.strip():
+            logger.info(msg=sentence_buffer)
+            tts_in.put(item=sentence_buffer.strip())
 
         tts_in.put(item=SENTINEL)
         text_out.put(item=transcript)
