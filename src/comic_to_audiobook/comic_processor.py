@@ -4,11 +4,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 import litellm
+import regex as re
 from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from litellm.types.utils import ModelResponse
 from litellm.utils import supports_pdf_input
+from regex import Pattern
 
 from comic_to_audiobook.prompts import SYSTEM_PROMPT
+
+MAX_LATENCY_CHARS = 300  # flush early if a sentence runs long
+SENTENCE_BOUNDARY: Pattern[str] = re.compile(pattern=r"([.!?…]+[\s\"\')]|\n{2,})")
 
 
 def prepare_content(prompt: str, data_url: str) -> list[dict[str, Any]]:
@@ -25,7 +30,7 @@ def encode_pdf(pdf_path: Path) -> str:
 
 def generate_transcript(
     model_name: str, file_content_with_prompt: list[dict[str, Any]]
-) -> Generator[Any | Literal[""], Any, None]:
+) -> Generator[str | Literal[""], Any, None]:
     if not supports_pdf_input(model=model_name):
         raise ValueError(f"Model {model_name} does not support PDF input")
 
