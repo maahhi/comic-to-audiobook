@@ -1,0 +1,37 @@
+[project]
+name = "comic-to-audiobook"
+version = "0.1.0"
+description = "Boson AI Hackathon"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=2.6.1",
+]
+
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.0.1",
+    "ipywidgets>=8.1.7",
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "ruff>=0.14.2",
+]
+
+[tool.ruff]
+line-length = 119
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "ASYNC", # flake8-async
+    "B", # flake8-bugbear
+    "RSE", # flake8-raise
+    "F", # pyflakes
+    "I", # isort
+    "UP", # pyupgrade
+]
