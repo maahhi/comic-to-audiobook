@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "gradio>=5.49.1",
+    "gradio-pdf>=0.0.22",
     "litellm>=1.78.7",
 ]
 

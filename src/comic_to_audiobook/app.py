@@ -2,9 +2,11 @@ import logging
 import sys
 from collections.abc import Generator
 from pathlib import Path
+from textwrap import fill
 from typing import Any
 
 import gradio as gr
+from gradio_pdf import PDF
 from numpy import dtype, ndarray
 from numpy._typing._shape import _AnyShape
 
@@ -24,15 +26,22 @@ TRANSCRIPT_GENERATION_MODEL = "gemini/gemini-2.5-pro"
 VOICE_ASSIGNMENT_MODEL = "gemini/gemini-2.5-flash"
 
 
-def format_voice_assignments(assignment: VoiceAssignmentResult) -> str:
-    lines: list[str] = [
-        f"{assignment.narrator.name} voice profile = [{assignment.narrator.voice_profile.value}]",
-        f"  Reference: {assignment.narrator.reference_line}",
-    ]
-    for character in assignment.characters:
-        lines.append(f"{character.name} voice profile = [{character.voice_profile.value}]")
-        lines.append(f"  Reference: {character.reference_line}")
-    return "\n".join(lines)
+def format_voice_assignments(assignment: VoiceAssignmentResult, width: int | None = None) -> str:
+    """Minimal, tidy output for a monospace textbox."""
+    rows = [(assignment.narrator.name, assignment.narrator.voice_profile.value, assignment.narrator.reference_line)]
+    rows += [(c.name, c.voice_profile.value, c.reference_line) for c in assignment.characters]
+
+    lines = ["Voice assignments:"]
+    for name, voice, ref in rows:
+        lines.append(f"• {name} — [{voice}]")
+        if width:
+            # Soft-wrap the reference under a short label; textbox keeps it neat.
+            lines.append(fill(text=ref, width=width, initial_indent="  Ref: ", subsequent_indent="       "))
+        else:
+            lines.append(f"  Ref: {ref}")
+        lines.append("")  # blank line between entries
+
+    return "\n".join(lines).rstrip()
 
 
 def format_transcript_lines(result: TranscriptResult) -> str:
@@ -74,7 +83,7 @@ def main(
         logger.warning(error_message)
         yield None, error_message, error_message, state_payload
         return
-    except Exception as exc:  # pragma: no cover - defensive guardrail
+    except Exception:  # pragma: no cover - defensive guardrail
         logger.exception("Unexpected error while assigning voice profiles.")
         fallback_message = "Voice profile extraction encountered an unexpected error. Please try again."
         yield None, fallback_message, fallback_message, state_payload
@@ -99,7 +108,7 @@ def main(
         logger.warning(error_message)
         yield None, error_message, assignment_display, state_payload
         return
-    except Exception as exc:  # pragma: no cover - defensive guardrail
+    except Exception:  # pragma: no cover - defensive guardrail
         logger.exception("Unexpected error while generating transcript.")
         fallback_message = "Transcript generation encountered an unexpected error. Please try again."
         yield None, fallback_message, assignment_display, state_payload
@@ -133,19 +142,19 @@ output_text: gr.Textbox = gr.Textbox(
     lines=17,
     show_copy_button=True,
 )
-output_audio: gr.Audio = gr.Audio(label="Comic Narration", streaming=True, autoplay=True)
+output_audio: gr.Audio = gr.Audio(label="Narration", streaming=True, autoplay=True)
 voice_profiles_box: gr.Textbox = gr.Textbox(
     label="Voice Profiles",
-    lines=10,
+    lines=5,
     show_copy_button=True,
 )
 workflow_state: gr.State = gr.State()
 
 demo: gr.Interface = gr.Interface(
     fn=main,
-    inputs=[gr.File(file_types=[".pdf"]), workflow_state],
+    inputs=[PDF(label="Comic (.pdf)"), workflow_state],
     outputs=[output_audio, output_text, voice_profiles_box, workflow_state],
-    title="Comic Narrator",
+    title="Comic Book Narrator",
 )
 
-_ = demo.launch(max_file_size="15mb")
+_ = demo.launch(max_file_size="10mb")
