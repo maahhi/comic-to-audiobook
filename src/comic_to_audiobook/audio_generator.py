@@ -80,6 +80,7 @@ def tts_stream_pcm(text: str) -> Generator[bytes, Any, None]:
     # Check if file exists and find closest match if not
     voice_ref_path = find_closest_voice_file(voice_ref, voices_dir)
     #resp = client.audio.speech.create(model=MODEL_NAME, voice=voice_ref, input=line, response_format="pcm")
+    """
     resp = client.chat.completions.create(
         model="higgs-audio-generation-Hackathon",
         messages=[
@@ -103,6 +104,44 @@ def tts_stream_pcm(text: str) -> Generator[bytes, Any, None]:
     )
     yield resp.cin  # bytes
     #yield resp.content  # bytes
+    """
+    messages=[
+            
+            {
+                "role": "assistant",
+                "content": [{
+                    "type": "input_audio",
+                    "input_audio": {"data": b64(voice_ref_path), "format": "wav"}
+                }],
+            },
+            {"role": "user", "content": line},
+        ],
+    client = openai.Client(api_key=BOSON_API_KEY, base_url="https://hackathon.boson.ai/v1")
+
+    stream = client.chat.completions.create(
+        model="higgs-audio-generation-Hackathon",
+        messages=messages,
+        modalities=["text", "audio"],
+            audio={"format": "pcm16"},
+            stream=True,
+            max_completion_tokens=4096,
+            temperature=1.0,
+            top_p=0.95,
+            extra_body={"top_k": 50},
+            stop=["<|eot_id|>", "<|end_of_text|>", "<|audio_eos|>"],
+        )
+
+    for chunk in stream:
+        delta = getattr(chunk.choices[0], "delta", None)
+        audio = getattr(delta, "audio", None) if delta else None
+        if not audio:
+            continue
+
+        audio_data = audio.get("data")
+        if not audio_data:
+            continue
+
+        yield base64.b64decode(audio_data)    
 
 
 def pcm_bytes_to_numpy_int16(pcm_bytes: bytes) -> tuple[int, np.ndarray]:
