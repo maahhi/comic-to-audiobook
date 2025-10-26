@@ -83,14 +83,15 @@ def tts_stream_pcm(text: str) -> Generator[bytes, Any, None]:
     resp = client.chat.completions.create(
         model="higgs-audio-generation-Hackathon",
         messages=[
-            {"role": "user", "content": line},
+            
             {
                 "role": "assistant",
                 "content": [{
                     "type": "input_audio",
                     "input_audio": {"data": b64(voice_ref_path), "format": "wav"}
                 }],
-            }
+            },
+            {"role": "user", "content": line},
         ],
         modalities=["text", "audio"],
         max_completion_tokens=4096,
@@ -100,7 +101,7 @@ def tts_stream_pcm(text: str) -> Generator[bytes, Any, None]:
         stop=["<|eot_id|>", "<|end_of_text|>", "<|audio_eos|>"],
         extra_body={"top_k": 50},
     )
-    yield resp.content  # bytes
+    yield resp.cin  # bytes
     #yield resp.content  # bytes
 
 
