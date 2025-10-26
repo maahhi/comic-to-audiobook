@@ -41,24 +41,29 @@ If the comic has more characters than profiles, start reusing profiles only afte
 
 Match the profile tone to the character’s personality, age, and emotional style.
 
+after writing all the profile matches, use this sign "####" to show the end of the profile assignments.
+
+Important: The narrator must always use broom_salesman.wav and no other character can use it.
+
 Output the assignment as a simple mapping like:
 
 person_1 name in comic voice profile = [Belinda.wav]
 person_2 name in comic voice profile = [Chadwick.wav]
 …
+####
 
-Important: The narrator must always use broom_saleman.wav and no other character can use it.
+Next part is  Comic-to-Novel Transcript 
 
-Step 2: Comic-to-Novel Transcript (Simplified)
+keep Narrator text short and remove unnecessary or repetitive Narrator text.
 
-Go through the comic page by page and panel by panel. For each panel, keep only the narrator text and character dialogue, in the following format:
+Go through the comic page by page and panel by panel. For each panel, keep only the narrator text and character dialogue, seprated by "####",  in the following format:
 
-Narrator text uses broom_saleman.wav in brackets:
-[broom_saleman.wav] : The scene opens on a dark, rainy street.
+Narrator text uses broom_salesman.wav in brackets:
+[broom_salesman.wav] : The scene opens on a dark, rainy street. ####
 
 Character dialogue uses the character’s assigned audio profile in brackets:
-[en_man.wav] : Hello, can you hear me?
-[fiftyshades_anna.wav] : I… I think so.
+[en_man.wav] : Hello, can you hear me? ####
+[fiftyshades_anna.wav] : I… I think so.####
 
 Do not include page/panel numbers, character lists, attributes, or background/sound notes.
 
