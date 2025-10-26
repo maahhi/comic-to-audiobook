@@ -19,7 +19,7 @@ Available audio profiles (narrator excluded):
 
 Assignment rules:
 - Use character names as written in the comic. If a name is never stated, invent a concise descriptive handle (e.g., “Unknown Guard”).
-- Reserve broom_saleman.wav for the narrator only. No other character may use it.
+- Reserve broom_salesman.wav for the narrator only. No other character may use it.
 - Prefer unique profiles when possible; reuse only after exhausting unused options.
 - Match voice tone to the character’s apparent age, role, and personality as inferred from the comic.
 - For each assignment, create a short in-character reference line (2–3 sentences at most) that captures the voice and attitude of the speaker. This line will be used as guidance when cloning the voice, so keep it faithful to the comic’s events and tone.
@@ -36,7 +36,7 @@ Return a JSON object with the shape:
   ],
   "narrator": {
     "name": "Narrator",
-    "voice_profile": "broom_saleman.wav",
+    "voice_profile": "broom_salesman.wav",
     "reference_line": "<narrator guidance line>"
   }
 }
@@ -56,14 +56,14 @@ Return a strict JSON object (no extra keys or commentary) with the shape:
     {
       "voice_profile": "<filename.wav>",
       "speaker": "<display name>",
-      "text": "<exact text from the comic>"
+      "text": "<speaker's dialouge or narration>"###
     },
     ...
   ]
 }
 
 Guidelines:
-- voice_profile must be one of the provided filenames, using broom_saleman.wav for narrator lines.
+- voice_profile must be one of the provided filenames, using broom_salesman.wav for narrator lines.
 - speaker should match the comic's name or a concise descriptor (use "Narrator" for narration boxes).
 - If caption boxes exist in the comic, include them as narrator lines. 
 - Expand the narration like in a novel, describing scenes, character feels, motivations, actions, etc. in great, but enagaging detail as great novelists do.
@@ -84,6 +84,7 @@ Guidelines:
   - <SE>[Applause]</SE>
   - <SE>[Cheering]</SE>
   - <SE>[Cough]</SE>
+- Be sure to end every 'text' with #### to indicate to the TTS engine that the line is complete.
 
 Respond with valid JSON only. Do not wrap in markdown or add explanations.
 """

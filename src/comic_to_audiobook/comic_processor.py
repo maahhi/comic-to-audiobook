@@ -17,8 +17,8 @@ SENTENCE_BOUNDARY: Pattern[str] = re.compile(pattern=r"([.!?…]+[\s\"\')]|\n{2,
 
 
 class VoiceProfileName(str, Enum):
-    BELINDA = "Belinda.wav"
-    CHADWICK = "Chadwick.wav"
+    BELINDA = "belinda.wav"
+    CHADWICK = "chadwick.wav"
     EN_MAN = "en_man.wav"
     EN_WOMAN = "en_woman.wav"
     FIFTYSHADES_ANNA = "fiftyshades_anna.wav"
@@ -30,7 +30,7 @@ class VoiceProfileName(str, Enum):
     SHREK_SHREK = "shrek_shrek.wav"
     VEX = "vex.wav"
     ZH_MAN_SICHUAN = "zh_man_sichuan.wav"
-    BROOM_SALEMAN = "broom_saleman.wav"
+    BROOM_SALESMAN = "broom_salesman.wav"
 
 
 class VoiceProfile(BaseModel):
@@ -125,8 +125,8 @@ def assign_voice_profiles(model_name: str, data_url: str) -> VoiceAssignmentResu
     except ValidationError as exc:
         raise ValueError("Unable to parse voice assignment from model response.") from exc
 
-    if assignment.narrator.voice_profile != VoiceProfileName.BROOM_SALEMAN:
-        raise ValueError("Narrator must be assigned the broom_saleman.wav profile.")
+    if assignment.narrator.voice_profile != VoiceProfileName.BROOM_SALESMAN:
+        raise ValueError("Narrator must be assigned the broom_salesman.wav profile.")
 
     if not assignment.characters:
         raise ValueError("No speaking characters were identified in the comic.")

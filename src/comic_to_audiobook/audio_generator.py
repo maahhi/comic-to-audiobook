@@ -18,7 +18,7 @@ logger: logging.Logger = logging.getLogger(name=__name__)
 BOSON_API_KEY: str | None = os.getenv("BOSON_API_KEY")
 AUDIO_MODEL_NAME: str = "higgs-audio-generation-Hackathon"
 SAMPLE_RATE: int = 24_000
-REFERENCE_AUDIO_DIR: Path = Path("ref-audio")
+REFERENCE_AUDIO_DIR: Path = Path("voices")
 
 _client = openai.Client(api_key=BOSON_API_KEY, base_url="https://hackathon.boson.ai/v1")
 
@@ -55,67 +55,19 @@ def _basic_tts_stream(text: str) -> Generator[bytes, None, None]:
             yield bytes(buffer)
 
 
-_VOICE_REFERENCE_CONFIG: dict[str, dict[str, str]] = {
-    "belinda.wav": {
-        "file": "belinda.wav",
-        "tag": "BELINDA",
-        "transcript": "[BELINDA] Bright and lively, I'm ready to narrate your story with energy.",
-    },
-    "chadwick.wav": {
-        "file": "chadwick.wav",
-        "tag": "CHADWICK",
-        "transcript": "[CHADWICK] Gruff and monstrous, I bring the shadows to life.",
-    },
-    "en_man.wav": {
-        "file": "en_man.wav",
-        "tag": "EN_MAN",
-        "transcript": "[EN_MAN] Confident and composed, I speak with steady resolve.",
-    },
-    "en_woman.wav": {
-        "file": "en_woman.wav",
-        "tag": "EN_WOMAN",
-        "transcript": "[EN_WOMAN] Clear and assured, my words carry the news with poise.",
-    },
-    "mabel.wav": {
-        "file": "mabel.wav",
-        "tag": "MABEL",
-        "transcript": "[MABEL] With a crisp British lilt, I add charm to every line.",
-    },
-    "vex.wav": {
-        "file": "vex.wav",
-        "tag": "VEX",
-        "transcript": "[VEX] Raspy and insistent, I poke and prod every conversation.",
-    },
-    "zh_man_sichuan.wav": {
-        "file": "zh_man_sichuan.wav",
-        "tag": "ZH_MAN_SICHUAN",
-        "transcript": "[ZH_MAN_SICHUAN] Animated and bright, my Sichuan accent stands out.",
-    },
-    "broom_saleman.wav": {
-        "file": "broom_salesman.wav",
-        "tag": "NARRATOR",
-        "transcript": "[NARRATOR] Steady and warm, I guide listeners through each scene.",
-    },
-}
-
-
-def _load_reference_voice(profile: str, generated_line: str | None) -> ReferenceVoice | None:
-    config = _VOICE_REFERENCE_CONFIG.get(profile.lower())
-    if not config:
-        return None
-
-    wav_path = REFERENCE_AUDIO_DIR / config["file"]
+def _load_reference_voice(profile: str, tag: str, reference_transcript: str | None) -> ReferenceVoice | None:
+    wav_path = REFERENCE_AUDIO_DIR / profile
     if not wav_path.exists():
         logger.warning("Reference WAV not found for profile %s at %s", profile, wav_path)
         return None
 
-    transcript_text = (generated_line or "").strip() or config.get("transcript", "")
+    transcript_text = (reference_transcript or "").strip()
     if not transcript_text:
-        transcript_text = f"[{config['tag']}]"
+        transcript_text = f"[{tag}]"
 
     return ReferenceVoice(
         profile=profile,
-        tag=config["tag"],
+        tag=tag,
         wav_path=wav_path,
         transcript=transcript_text,
     )
@@ -133,19 +85,19 @@ def synthesize_structured_transcript(
     if not lines:
         return
 
-    reference_lines: dict[str, str] = {
-        assignment.narrator.voice_profile.value: assignment.narrator.reference_line
-    }
+    reference_lines: dict[str, str] = {assignment.narrator.voice_profile.value: assignment.narrator.reference_line}
+    profile_tags: dict[str, str] = {assignment.narrator.voice_profile.value: assignment.narrator.name.upper()}
     for character in assignment.characters:
         profile_value = character.voice_profile.value
         reference_lines.setdefault(profile_value, character.reference_line)
+        profile_tags.setdefault(profile_value, character.name.upper())
 
     unique_profiles = {line.voice_profile.value for line in lines}
     references: dict[str, ReferenceVoice] = {}
     missing_profiles: set[str] = set()
 
     for profile in unique_profiles:
-        ref = _load_reference_voice(profile, reference_lines.get(profile))
+        ref = _load_reference_voice(profile, profile_tags[profile], reference_lines.get(profile))
         if ref:
             references[profile] = ref
         else:
@@ -197,8 +149,9 @@ def synthesize_structured_transcript(
     for line in lines:
         ref = references[line.voice_profile.value]
         speaker_prefix = f"{line.speaker}: " if line.speaker else ""
-        final_script_lines.append(f"[{ref.tag}] {speaker_prefix}{line.text}")
+        final_script_lines.append(f"[{ref.tag}] {line.text}")
     final_script = "\n".join(final_script_lines)
+    logger.info("Final script: %s", final_script)
 
     messages.append({"role": "user", "content": final_script})
 
@@ -212,6 +165,7 @@ def synthesize_structured_transcript(
         temperature=1.0,
         top_p=0.95,
         extra_body={"top_k": 50},
+        stop=["<|eot_id|>", "<|end_of_text|>", "<|audio_eos|>"],
     )
 
     for chunk in stream:
