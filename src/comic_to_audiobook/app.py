@@ -1,8 +1,5 @@
 import logging
-import queue
 import sys
-import threading
-import time
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any
@@ -11,159 +8,144 @@ import gradio as gr
 from numpy import dtype, ndarray
 from numpy._typing._shape import _AnyShape
 
-from comic_to_audiobook.audio_generator import pcm_bytes_to_numpy_int16, tts_stream_pcm
+from comic_to_audiobook.audio_generator import pcm_bytes_to_numpy_int16, synthesize_structured_transcript
 from comic_to_audiobook.comic_processor import (
-    MAX_LATENCY_CHARS,
-    SENTENCE_BOUNDARY,
+    TranscriptResult,
+    VoiceAssignmentResult,
+    assign_voice_profiles,
     encode_pdf,
-    generate_transcript,
-    prepare_content,
+    generate_structured_transcript,
 )
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO, force=True)
 logger: logging.Logger = logging.getLogger(name=__name__)
 
-MODEL_NAME = "gemini/gemini-2.5-pro"
+TRANSCRIPT_GENERATION_MODEL = "gemini/gemini-2.5-pro"
+VOICE_ASSIGNMENT_MODEL = "gemini/gemini-2.5-flash"
+
+
+def format_voice_assignments(assignment: VoiceAssignmentResult) -> str:
+    lines: list[str] = [
+        f"{assignment.narrator.name} voice profile = [{assignment.narrator.voice_profile.value}]",
+        f"  Reference: {assignment.narrator.reference_line}",
+    ]
+    for character in assignment.characters:
+        lines.append(f"{character.name} voice profile = [{character.voice_profile.value}]")
+        lines.append(f"  Reference: {character.reference_line}")
+    return "\n".join(lines)
+
+
+def format_transcript_lines(result: TranscriptResult) -> str:
+    formatted: list[str] = []
+    for line in result.lines:
+        speaker_prefix = f"{line.speaker}: " if line.speaker else ""
+        formatted.append(f"[{line.voice_profile.value}] {speaker_prefix}{line.text}")
+    return "\n".join(formatted)
 
 
 def main(
     file_path: str,
-) -> Generator[tuple[None, str | object] | tuple[tuple[int, ndarray[_AnyShape, dtype[Any]]], str | object], Any, None]:
-    # Define sentinel to signal the end of TTS input stream and text output stream
-    SENTINEL: object = object()
+    cached_state: dict[str, Any] | None,
+) -> Generator[
+    tuple[
+        tuple[int, ndarray[_AnyShape, dtype[Any]]] | None,
+        str | object,
+        str,
+        dict[str, Any],
+    ],
+    Any,
+    None,
+]:
+    state_payload: dict[str, Any] = {"assignment": None, "transcript": None}
+    if isinstance(cached_state, dict):
+        state_payload.update({k: cached_state.get(k) for k in ("assignment", "transcript") if k in cached_state})
 
-    # Queues to hold streamed chunks of text and audio for both input and outputs
-    tts_in: queue.Queue[str | object] = queue.Queue(maxsize=8)  # text chunk to TTS
-    audio_out: queue.Queue[bytes | object] = queue.Queue(maxsize=32)  # output audio chunk
-    text_out: queue.Queue[str | object] = queue.Queue(maxsize=64)  # text chunk to output text box
-
-    # Prepare the PDF
+    # Prepare the PDF once for both model calls
     file_encoding: str = encode_pdf(pdf_path=Path(file_path))
     base64_url: str = f"data:application/pdf;base64,{file_encoding}"
-    file_content_with_prompt: list[dict[str, Any]] = prepare_content(
-        prompt="Transcribe the input", data_url=base64_url
-    )
 
-    def vlm_producer() -> None:
-        transcript: str = ""
-        sentence_buffer: str = ""
-        for text_chunk in generate_transcript(
-            model_name=MODEL_NAME, file_content_with_prompt=file_content_with_prompt
-        ):
-            if not text_chunk:
+    # Step 1: assign voice profiles
+    try:
+        voice_assignment: VoiceAssignmentResult = assign_voice_profiles(
+            model_name=VOICE_ASSIGNMENT_MODEL, data_url=base64_url
+        )
+    except ValueError as exc:
+        error_message = f"Voice profile extraction failed: {exc}"
+        logger.warning(error_message)
+        yield None, error_message, error_message, state_payload
+        return
+    except Exception as exc:  # pragma: no cover - defensive guardrail
+        logger.exception("Unexpected error while assigning voice profiles.")
+        fallback_message = "Voice profile extraction encountered an unexpected error. Please try again."
+        yield None, fallback_message, fallback_message, state_payload
+        return
+
+    assignment_display: str = format_voice_assignments(assignment=voice_assignment)
+    assignment_data: dict[str, Any] = voice_assignment.model_dump(mode="json")
+    state_payload["assignment"] = assignment_data
+
+    # Let the UI show the cast while we generate the transcript
+    yield None, "Generating transcript...", assignment_display, state_payload
+
+    # Step 2: generate structured transcript
+    try:
+        transcript_result: TranscriptResult = generate_structured_transcript(
+            model_name=TRANSCRIPT_GENERATION_MODEL,
+            assignment=voice_assignment,
+            data_url=base64_url,
+        )
+    except ValueError as exc:
+        error_message = f"Transcript generation failed: {exc}"
+        logger.warning(error_message)
+        yield None, error_message, assignment_display, state_payload
+        return
+    except Exception as exc:  # pragma: no cover - defensive guardrail
+        logger.exception("Unexpected error while generating transcript.")
+        fallback_message = "Transcript generation encountered an unexpected error. Please try again."
+        yield None, fallback_message, assignment_display, state_payload
+        return
+
+    state_payload["transcript"] = transcript_result.model_dump(mode="json")
+
+    transcript_text: str = format_transcript_lines(result=transcript_result)
+    if not transcript_text.strip():
+        empty_message = "Transcript was empty. Unable to produce audio."
+        yield None, empty_message, assignment_display, state_payload
+        return
+
+    # Show the transcript in the UI
+    yield None, transcript_text, assignment_display, state_payload
+
+    # Step 3: synthesize audio using the structured transcript
+    try:
+        for pcm_chunk in synthesize_structured_transcript(transcript_result.lines, voice_assignment):
+            if not pcm_chunk:
                 continue
-
-            transcript += text_chunk
-
-            if text_out.empty():  # only push to the output text box after all existing text has been consumed
-                text_out.put(item=transcript)
-
-            sentence_buffer += text_chunk
-
-            while True:
-                match = SENTENCE_BOUNDARY.search(string=sentence_buffer)
-                should_flush_long_text: bool = len(sentence_buffer) >= MAX_LATENCY_CHARS and not match
-
-                if not match and not should_flush_long_text:
-                    break
-
-                if match:
-                    # Found complete sentence
-                    cut: int = match.end()
-
-                    # Cut out complete sentence
-                    sentence = sentence_buffer[:cut].strip()
-
-                    # Keep the remaining in the buffer
-                    sentence_buffer = sentence_buffer[cut:]
-                else:
-                    # Flush sentence longer than MAX_LATENCY_CHAR
-                    sentence = sentence_buffer.strip()
-
-                    # Clear buffer
-                    sentence_buffer = ""
-
-                if sentence:  # add to the TTS streaming queue
-                    logger.info(msg=sentence)
-                    tts_in.put(item=sentence)
-
-        # Flush any trailing text
-        if sentence_buffer.strip():
-            logger.info(msg=sentence_buffer)
-            tts_in.put(item=sentence_buffer.strip())
-
-        tts_in.put(item=SENTINEL)
-        text_out.put(item=transcript)
-        text_out.put(item=SENTINEL)
-
-    # Thread 2: consume sentences -> stream PCM -> audio_out
-    def tts_worker() -> None:
-        while True:
-            item: str | object = tts_in.get()
-            if item is SENTINEL:
-                break
-
-            logger.info("TTS item: %s", item)
-            for pcm_chunk in tts_stream_pcm(text=item):
-                audio_out.put(item=pcm_chunk)
-
-        audio_out.put(item=SENTINEL)
-
-    # Start threads
-    threading.Thread(target=vlm_producer, daemon=True).start()
-    threading.Thread(target=tts_worker, daemon=True).start()
-
-    # Generator loop: interleave text updates and audio chunks
-    latest_text = ""
-    text_done = audio_done = False
-    last_text_push: float = 0.0
-
-    while not (text_done and audio_done):
-        # 1) Prefer pushing text updates frequently
-        try:
-            txt: str | object = text_out.get(timeout=0.02)
-            if txt is SENTINEL:
-                text_done = True
-            else:
-                latest_text: str | object = txt
-                now: float = time.time()
-                # avoid flooding UI: ~15 fps for text updates
-                if now - last_text_push > 1 / 15:
-                    last_text_push = now
-                    yield None, latest_text
-        except queue.Empty:
-            pass
-
-        # 2) Push any available audio immediately (can be many per iteration)
-        pushed_audio = False
-        while True:
-            try:
-                chunk: bytes | object = audio_out.get_nowait()
-            except queue.Empty:
-                break
-            if chunk is SENTINEL:
-                audio_done = True
-                break
-            pushed_audio = True
-            yield pcm_bytes_to_numpy_int16(pcm_bytes=chunk), latest_text
-
-        # Small sleep to yield the event loop if nothing happened
-        if not pushed_audio:
-            time.sleep(0.005)
-
-    # Ensure the final state is visible
-    yield None, latest_text
+            yield pcm_bytes_to_numpy_int16(pcm_bytes=pcm_chunk), transcript_text, assignment_display, state_payload
+    except Exception as exc:  # pragma: no cover - defensive guardrail
+        logger.exception("TTS generation failed.")
+        failure_message = f"Audio synthesis failed: {exc}"
+        yield None, transcript_text + f"\n\n{failure_message}", assignment_display, state_payload
 
 
 output_text: gr.Textbox = gr.Textbox(
     label="Transcript",
-    lines=17,  # initial visible rows
+    lines=17,
     show_copy_button=True,
 )
 output_audio: gr.Audio = gr.Audio(label="Comic Narration", streaming=True, autoplay=True)
+voice_profiles_box: gr.Textbox = gr.Textbox(
+    label="Voice Profiles",
+    lines=10,
+    show_copy_button=True,
+)
+workflow_state: gr.State = gr.State()
 
 demo: gr.Interface = gr.Interface(
-    fn=main, inputs=gr.File(file_types=[".pdf"]), outputs=[output_audio, output_text], title="Comic Narrator"
+    fn=main,
+    inputs=[gr.File(file_types=[".pdf"]), workflow_state],
+    outputs=[output_audio, output_text, voice_profiles_box, workflow_state],
+    title="Comic Narrator",
 )
 
 _ = demo.launch(max_file_size="15mb")
