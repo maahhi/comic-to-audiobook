@@ -13,7 +13,8 @@ from regex import Pattern
 from comic_to_audiobook.prompts import SYSTEM_PROMPT
 
 MAX_LATENCY_CHARS = 300  # flush early if a sentence runs long
-SENTENCE_BOUNDARY: Pattern[str] = re.compile(pattern=r"([.!?…]+[\s\"\')]|\n{2,})")
+#SENTENCE_BOUNDARY: Pattern[str] = re.compile(pattern=r"([.!?…]+[\s\"\')]|\n{2,})")
+SENTENCE_BOUNDARY: re.Pattern[str] = re.compile(r"(####)")
 
 
 def prepare_content(prompt: str, data_url: str) -> list[dict[str, Any]]:

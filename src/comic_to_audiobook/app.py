@@ -96,14 +96,20 @@ def main(
         text_out.put(item=transcript)
         text_out.put(item=SENTINEL)
 
+    
     # Thread 2: consume sentences -> stream PCM -> audio_out
     def tts_worker() -> None:
+        first_text_chunk = True
         while True:
             item: str | object = tts_in.get()
             if item is SENTINEL:
                 break
 
             logger.info("TTS item: %s", item)
+            if first_text_chunk:
+                first_text_chunk = False
+                print("---------------------- First text chunk: " ,item)
+                continue
             for pcm_chunk in tts_stream_pcm(text=item):
                 audio_out.put(item=pcm_chunk)
 
